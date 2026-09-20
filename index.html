@@ -1,0 +1,1665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goods Receiving & Bill Attachment System</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS, ExcelJS, JSZip & FileSaver -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <!-- JSZip: ใช้ลบ attribute editAs ที่ ExcelJS เขียนผิดสเปกก่อนเซฟ (ดู stripInvalidAnchorEditAs) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .font-luxury { font-family: 'Cinzel', serif; }
+    </style>
+</head>
+<body class="bg-[#F8F6F0] text-stone-800 pb-10 min-h-screen">
+
+    <div id="appShell">
+        <div class="max-w-md mx-auto bg-white min-h-screen shadow-2xl border-x border-amber-900/10 p-4">
+        
+        <!-- Header & Export Button Area -->
+        <div class="flex justify-between items-center mb-3 pb-3 border-b-2 border-amber-600/30">
+            <div>
+                <h1 class="font-luxury text-[13px] font-extrabold tracking-wider text-amber-800 uppercase">Navera Phuket</h1>
+                <p class="text-[10px] font-semibold tracking-widest text-stone-500 uppercase">MGallery Collection</p>
+            </div>
+            <div class="flex gap-1.5">
+                <button onclick="clearSavedData()" class="bg-stone-200 text-stone-700 px-2 py-1.5 rounded-md text-[10px] font-bold hover:bg-rose-100 hover:text-rose-700 transition border border-stone-300">
+                    🗑️ Clear
+                </button>
+                <button onclick="exportToExcel()" class="bg-gradient-to-r from-amber-700 via-amber-600 to-amber-800 text-amber-50 px-3 py-1.5 rounded-md text-[11px] font-bold shadow-md hover:brightness-110 transition border border-amber-400/40 flex items-center gap-1">
+                    <span>✨</span> Export
+                </button>
+                <button onclick="sendReportByLine()" class="bg-[#06C755] text-white px-2.5 py-1.5 rounded-md text-[11px] font-bold shadow-md hover:brightness-110 transition border border-emerald-600/40 flex items-center gap-1">
+                    <span>💬</span> LINE
+                </button>
+            </div>
+        </div>
+
+        <!-- Received Performance Header -->
+        <div class="mb-2">
+            <h2 class="text-sm font-extrabold text-amber-900 tracking-wide">Received Performance</h2>
+        </div>
+
+        <!-- Session Auto-save Status Badge -->
+        <div class="flex justify-between items-center mb-2 px-0.5 text-[10px] font-bold text-amber-900/80">
+            <span class="flex items-center gap-1">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Auto-save Active
+            </span>
+            <span id="lastSavedTime" class="text-stone-400 font-normal">Not saved yet</span>
+        </div>
+
+        <!-- Excel Auto-save to File (ใช้ได้บนคอม Chrome/Edge) -->
+        <div class="flex justify-between items-center mb-3 px-0.5 text-[10px]">
+            <span id="excelAutoStatus" class="text-stone-500 font-bold truncate">💾 บันทึก Excel อัตโนมัติ: ปิด</span>
+            <button type="button" id="excelAutoToggleBtn" onclick="toggleExcelAutoSave()" class="ml-2 flex-shrink-0 bg-stone-200 text-stone-700 px-2 py-1 rounded-md text-[10px] font-bold border border-stone-300 hover:bg-amber-100 hover:text-amber-900 transition">เปิดใช้งาน</button>
+        </div>
+
+        <!-- 1. Import PO Excel File -->
+        <div class="p-1.5 px-2 bg-gradient-to-br from-amber-50/80 to-amber-100/40 border border-amber-300/70 rounded-md mb-3 shadow-xs">
+            <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-1.5 min-w-0">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-600 inline-block flex-shrink-0"></span>
+                    <span class="text-[10px] font-bold text-amber-950 whitespace-nowrap">1. Import PO:</span>
+                    <input type="file" id="excelInput" accept=".xlsx, .xls" class="block text-[10px] text-stone-600 file:mr-1 file:py-0.5 file:px-2 file:rounded file:border-0 file:text-[9px] file:font-bold file:bg-stone-800 file:text-amber-300 file:cursor-pointer hover:file:bg-stone-900 cursor-pointer min-w-0" onchange="importPOExcel(event)">
+                </div>
+                <span id="uploadStatus" class="text-[9px] text-stone-500 font-semibold whitespace-nowrap flex-shrink-0">No file (Manual Mode)</span>
+            </div>
+        </div>
+
+        <!-- Receiving Information -->
+        <div class="p-3 bg-stone-900 text-amber-100 rounded-lg mb-4 shadow-md border border-amber-500/20 space-y-2.5">
+            <h2 class="text-xs font-luxury font-bold tracking-wider text-amber-400 flex items-center gap-1">
+                📌 RECEIVING INFORMATION
+            </h2>
+            <div class="grid grid-cols-2 gap-2.5">
+                <div>
+                    <label class="block text-[10px] font-semibold text-amber-200/80 mb-1">Receive Date</label>
+                    <input type="date" id="receivedDateInput" onchange="queueSave()" class="w-full border border-amber-500/30 rounded p-1.5 text-xs bg-stone-800 text-amber-100 focus:ring-1 focus:ring-amber-400 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-semibold text-amber-200/80 mb-1">Receiver Name</label>
+                    <input type="text" id="receiverNameInput" oninput="queueSave()" class="w-full border border-amber-500/30 rounded p-1.5 text-xs bg-stone-800 text-amber-100 placeholder-stone-500 focus:ring-1 focus:ring-amber-400 focus:outline-none" placeholder="Enter name">
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. Capture Item Photo & Receive Qty -->
+        <div class="border border-stone-200 p-3 rounded-lg bg-stone-50/50 mb-4 space-y-3 shadow-sm">
+            <div class="flex justify-between items-center">
+                <h2 class="text-xs font-bold text-stone-800 flex items-center gap-1">
+                    <span class="w-2 h-2 rounded-full bg-stone-700 inline-block"></span> 2. Capture Item Photos & Quantities
+                </h2>
+                <button type="button" onclick="enableManualAddItem()" class="text-[10px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded border border-amber-300 hover:bg-amber-200 transition">
+                    + Add New Item
+                </button>
+            </div>
+
+            <!-- Item Selection / Description Input -->
+            <div class="space-y-2 bg-white p-2.5 border border-amber-200/80 rounded-md shadow-xs">
+                <div class="flex items-center space-x-2">
+                    <div class="w-1/3">
+                        <label class="block text-[11px] font-bold text-amber-900">Item No. (Seq)</label>
+                        <input type="number" id="seqInput" min="1" placeholder="e.g. 1" class="w-full border border-amber-300 p-1.5 text-xs rounded text-center font-bold focus:ring-1 focus:ring-amber-600 bg-amber-50/30 focus:outline-none" oninput="onSeqInputChange(this.value)">
+                    </div>
+                    <div class="w-2/3">
+                        <label class="block text-[11px] font-medium text-stone-600">Or Select Dropdown</label>
+                        <select id="poItemSelect" class="w-full border border-stone-300 rounded p-1.5 text-xs bg-white focus:border-amber-600 focus:outline-none" onchange="onSelectDropdown(this.value)">
+                            <option value="">-- Select Item --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="bg-amber-50/60 border border-amber-200/60 p-2 rounded space-y-1">
+                    <label class="block text-[10px] text-amber-800/80 font-semibold">Item Description (ชื่อสินค้า):</label>
+                    <input type="text" id="itemNameInput" placeholder="กรอกชื่อสินค้ากรณีไม่มีไฟล์ PO" class="w-full border border-amber-300 p-1.5 text-xs rounded font-bold text-stone-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500">
+                </div>
+            </div>
+
+            <!-- Normal Product Photo -->
+            <div class="bg-white p-2.5 border border-stone-200 rounded-md">
+                <label class="block text-[11px] font-bold text-stone-700 mb-1.5">📷 Normal Product Photo</label>
+                <div class="flex items-center space-x-3">
+                    <div class="w-[60px] h-[60px] border-2 border-dashed border-amber-300 rounded-md flex items-center justify-center bg-amber-50/30 overflow-hidden flex-shrink-0">
+                        <span class="text-[9px] text-stone-400 text-center" id="placeholderText">No Image</span>
+                        <img id="preview" class="w-full h-full object-cover hidden" alt="Product Image">
+                    </div>
+                    <div class="flex-1 grid grid-cols-2 gap-1.5">
+                        <button type="button" onclick="document.getElementById('cameraInput').click()" class="bg-stone-800 text-amber-300 py-1.5 px-2 rounded text-[10px] font-bold hover:bg-stone-900 border border-amber-500/30">📷 Take</button>
+                        <button type="button" onclick="document.getElementById('galleryInput').click()" class="bg-stone-100 text-stone-700 py-1.5 px-2 rounded text-[10px] font-bold hover:bg-stone-200 border border-stone-300">🖼️ Gallery</button>
+                        <button type="button" onclick="clearImage('normal')" class="col-span-2 bg-rose-50 text-rose-700 py-1 rounded text-[9px] font-bold hover:bg-rose-100 border border-rose-200">❌ Remove Normal Photo</button>
+                        <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden" onchange="previewImage(event, 'normal')">
+                        <input type="file" id="galleryInput" accept="image/*" class="hidden" onchange="previewImage(event, 'normal')">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Damaged Product Photo -->
+            <div class="bg-rose-50/40 p-2.5 border border-rose-200/80 rounded-md">
+                <label class="block text-[11px] font-bold text-rose-800 mb-1.5">⚠️ Damaged Item Photo (Optional)</label>
+                <div class="flex items-center space-x-3">
+                    <div class="w-[60px] h-[60px] border-2 border-dashed border-rose-300 rounded-md flex items-center justify-center bg-white overflow-hidden flex-shrink-0">
+                        <span class="text-[9px] text-rose-300 text-center" id="placeholderDamageText">No Image</span>
+                        <img id="damagePreview" class="w-full h-full object-cover hidden" alt="Damaged Image">
+                    </div>
+                    <div class="flex-1 grid grid-cols-2 gap-1.5">
+                        <button type="button" onclick="document.getElementById('damageCameraInput').click()" class="bg-rose-700 text-white py-1.5 px-2 rounded text-[10px] font-bold hover:bg-rose-800">📷 Take</button>
+                        <button type="button" onclick="document.getElementById('damageGalleryInput').click()" class="bg-rose-100 text-rose-800 py-1.5 px-2 rounded text-[10px] font-bold hover:bg-rose-200">🖼️ Gallery</button>
+                        <button type="button" onclick="clearImage('damage')" class="col-span-2 bg-rose-100 text-rose-900 py-1 rounded text-[9px] font-bold hover:bg-rose-200 border border-rose-300">❌ Remove Damaged Photo</button>
+                        <input type="file" id="damageCameraInput" accept="image/*" capture="environment" class="hidden" onchange="previewImage(event, 'damage')">
+                        <input type="file" id="damageGalleryInput" accept="image/*" class="hidden" onchange="previewImage(event, 'damage')">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quantities & Prices -->
+            <div class="grid grid-cols-2 gap-2 bg-white p-2 border border-stone-200 rounded-md">
+                <div>
+                    <label class="block text-[10px] font-semibold text-stone-500">PO Qty</label>
+                    <input type="number" id="poQtyInput" class="w-full border border-stone-300 text-xs p-1.5 rounded text-center font-bold text-stone-700 focus:outline-none" placeholder="0">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-amber-900">Received Qty</label>
+                    <input type="number" id="receivedQtyInput" class="w-full border border-amber-400 text-xs p-1.5 rounded text-center font-bold text-amber-950 focus:ring-1 focus:ring-amber-600 bg-amber-50/20 focus:outline-none" placeholder="0">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-rose-800">Damaged Qty</label>
+                    <input type="number" id="damagedQtyInput" class="w-full border border-rose-300 text-xs p-1.5 rounded text-center font-bold text-rose-900 bg-rose-50/20 focus:ring-1 focus:ring-rose-500 focus:outline-none" placeholder="0">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-stone-700">Unit Price</label>
+                    <input type="number" step="0.01" id="unitPriceInput" class="w-full border border-stone-300 text-xs p-1.5 rounded text-center font-bold text-stone-800 focus:outline-none" placeholder="0.00">
+                </div>
+            </div>
+
+            <!-- Remark Input (Col X) -->
+            <div class="bg-white p-2 border border-stone-200 rounded-md space-y-1">
+                <label class="block text-[10px] font-bold text-stone-700">📝 Remark</label>
+                <input type="text" id="remarkInput" placeholder="ระบุหมายเหตุเพิ่มเติม (ถ้ามี)" class="w-full border border-stone-300 p-1.5 text-xs rounded font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500">
+            </div>
+
+            <button type="button" id="saveItemBtn" onclick="assignImageAndData()" class="w-full bg-gradient-to-r from-stone-800 via-amber-900 to-stone-900 text-amber-300 py-2.5 rounded-md text-xs font-bold hover:brightness-110 shadow-md border border-amber-500/30 tracking-wide disabled:opacity-50 disabled:cursor-not-allowed">
+                ✓ Save Item Photo & Quantities
+            </button>
+        </div>
+
+        <!-- 3. Multiple Bills Attachment -->
+        <div class="border border-amber-300/60 p-3 rounded-lg bg-gradient-to-br from-amber-50/60 to-stone-100 mb-4 space-y-2 shadow-sm">
+            <h2 class="text-xs font-bold text-amber-950 flex items-center gap-1">
+                📸 3. Attach Bill / Delivery Notes (Multiple)
+            </h2>
+            <div class="flex gap-2">
+                <button type="button" onclick="document.getElementById('billCameraInput').click()" class="w-full bg-amber-800 text-amber-100 py-1.5 px-2 rounded text-xs font-bold hover:bg-amber-900 shadow-xs border border-amber-600/30">
+                    📷 Take Bill Photo
+                </button>
+                <input type="file" id="billCameraInput" accept="image/*" capture="environment" class="hidden" onchange="handleBillUpload(event)">
+
+                <button type="button" onclick="document.getElementById('billGalleryInput').click()" class="w-full bg-amber-200/70 text-amber-950 py-1.5 px-2 rounded text-xs font-bold hover:bg-amber-300/80 border border-amber-300">
+                    🖼️ Choose Bill Photos
+                </button>
+                <input type="file" id="billGalleryInput" accept="image/*" multiple class="hidden" onchange="handleBillUpload(event)">
+            </div>
+            <p id="billStatus" class="text-[11px] text-amber-800 text-center font-semibold">No bills attached (0 images)</p>
+            
+            <div id="billPreviewContainer" class="flex gap-2 overflow-x-auto py-1 hidden"></div>
+        </div>
+
+        <!-- 4. PO Items List Header -->
+        <div class="mb-2 flex justify-between items-center px-1">
+            <h2 class="text-xs font-bold text-stone-800">PO Items (<span id="itemCount" class="text-amber-800">0</span>)</h2>
+        </div>
+
+        <div id="poItemsList" class="space-y-2 max-h-[220px] overflow-y-auto border border-stone-200 p-2 rounded-lg bg-stone-50/50">
+            <p class="text-xs text-stone-400 text-center py-4">No items yet</p>
+        </div>
+    </div>
+
+    <script>
+        let rawWorkbookArrayBuffer = null;
+        let poData = []; 
+        let currentBase64Image = '';
+        let currentDamagedBase64Image = '';
+        let currentSelectedItem = null; 
+        let billImagesArray = [];
+        let poFileName = '';
+        let supplierName = '';
+        let poNumber = '';
+
+        // กันรูปหลุดไปอยู่กับรายการอื่น: รูปที่ถ่ายแล้วยังย่อไม่เสร็จ จะถูกยกเลิกถ้ามีการเปลี่ยนรายการ/ล้างฟอร์มก่อน
+        let captureTokens = { normal: 0, damage: 0 };
+        let normalImageReady = Promise.resolve();
+        let damagedImageReady = Promise.resolve();
+        let saveButtonBusyCount = 0;
+        let isSavingItem = false;
+
+        async function startApp() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('receivedDateInput').value = today;
+            await loadSession();
+            await loadExcelAutoHandle();
+            updateQuantityRules();
+            // ขอสิทธิ์เก็บข้อมูลถาวรไว้ในเครื่อง กันเบราว์เซอร์ล้างข้อมูลเมื่อพื้นที่ใกล้เต็ม
+            if (navigator.storage && navigator.storage.persist) {
+                navigator.storage.persist().catch(() => {});
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // ไม่มีหน้า login แล้ว — เข้าแอปทันทีเมื่อโหลดหน้าเสร็จ
+            startApp();
+        });
+
+        // กันลืมบันทึกตอนพิมพ์ค้างไว้แล้วสลับแท็บ/ย่อหน้าต่างทันที
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) persistSession();
+        });
+
+        function getImageDimensions(src) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve({ width: img.width, height: img.height });
+                img.onerror = () => resolve({ width: 192, height: 140 });
+                img.src = src;
+            });
+        }
+
+        // ==================== Quantity Validation Rules Logic ====================
+        function updateQuantityRules() {
+            const hasNormalImg = Boolean(currentBase64Image);
+            const hasDamagedImg = Boolean(currentDamagedBase64Image);
+
+            const receivedInput = document.getElementById('receivedQtyInput');
+            const damagedInput = document.getElementById('damagedQtyInput');
+
+            receivedInput.disabled = false;
+            receivedInput.classList.remove('bg-stone-100', 'text-stone-400', 'cursor-not-allowed');
+
+            damagedInput.disabled = false;
+            damagedInput.classList.remove('bg-stone-100', 'text-stone-400', 'cursor-not-allowed');
+
+            if (hasNormalImg && !hasDamagedImg) {
+                damagedInput.value = 0;
+                damagedInput.disabled = true;
+                damagedInput.classList.add('bg-stone-100', 'text-stone-400', 'cursor-not-allowed');
+            } else if (hasDamagedImg && !hasNormalImg) {
+                receivedInput.value = 0;
+                receivedInput.disabled = true;
+                receivedInput.classList.add('bg-stone-100', 'text-stone-400', 'cursor-not-allowed');
+            }
+        }
+
+        // ==================== IndexedDB Session Storage ====================
+        // เก็บข้อมูลทั้งหมดไว้ใน IndexedDB แทน localStorage เดิม เพราะ localStorage จำกัดราว 5MB
+        // พอถ่ายรูปเยอะจะล้นโควตาแล้วบันทึกไม่สำเร็จแบบเงียบๆ (ต้นตอข้อมูลรวน/หายตอนรีเฟรช)
+        // IndexedDB มีพื้นที่หลายร้อย MB ขึ้นไป และเขียนแบบ async ไม่ทำให้หน้าเว็บสะดุด
+        const IDB_NAME = 'navera_receiving_db';
+        const IDB_STORE = 'kv';
+        const SESSION_KEY = 'navera_receiving_data';
+        let idbPromise = null;
+        let storageWarned = false;
+
+        function openSessionDB() {
+            if (!idbPromise) {
+                idbPromise = new Promise((resolve, reject) => {
+                    if (!window.indexedDB) {
+                        reject(new Error('IndexedDB not supported'));
+                        return;
+                    }
+                    const req = indexedDB.open(IDB_NAME, 1);
+                    req.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+                    };
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => reject(req.error);
+                });
+            }
+            return idbPromise;
+        }
+
+        function idbSet(key, value) {
+            return openSessionDB().then((db) => new Promise((resolve, reject) => {
+                const tx = db.transaction(IDB_STORE, 'readwrite');
+                tx.objectStore(IDB_STORE).put(value, key);
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error || new Error('IndexedDB write failed'));
+                tx.onabort = () => reject(tx.error || new Error('IndexedDB write aborted'));
+            }));
+        }
+
+        function idbGet(key) {
+            return openSessionDB().then((db) => new Promise((resolve, reject) => {
+                const req = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(key);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            }));
+        }
+
+        function idbDelete(key) {
+            return openSessionDB().then((db) => new Promise((resolve, reject) => {
+                const tx = db.transaction(IDB_STORE, 'readwrite');
+                tx.objectStore(IDB_STORE).delete(key);
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            }));
+        }
+
+        function buildSessionSnapshot() {
+            return {
+                poData: poData,
+                billImagesArray: billImagesArray,
+                rawWorkbookArrayBuffer: rawWorkbookArrayBuffer, // เก็บ ArrayBuffer ตรงๆ ได้เลย ไม่ต้องแปลงเป็น base64 ทิ้งพื้นที่
+                poFileName: poFileName,
+                supplierName: supplierName,
+                poNumber: poNumber,
+                receivedDate: document.getElementById('receivedDateInput').value,
+                receiverName: document.getElementById('receiverNameInput').value,
+                lastSaved: new Date().toLocaleTimeString()
+            };
+        }
+
+        let saveTimer = null;
+        let writeChain = Promise.resolve();
+
+        // บันทึกแบบหน่วงสั้นๆ สำหรับช่องที่พิมพ์บ่อยๆ (ชื่อผู้รับ/วันที่) กันเขียนถี่เกินจนเปลืองเครื่อง
+        function queueSave() {
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(persistSession, 400);
+        }
+
+        // บันทึกทันที — ใช้หลัง import PO / บันทึกรายการ / แนบ-ลบรูปใบส่ง
+        function persistSession() {
+            clearTimeout(saveTimer);
+            const snapshot = buildSessionSnapshot();
+            writeChain = writeChain
+                .then(() => idbSet(SESSION_KEY, snapshot))
+                .then(() => {
+                    document.getElementById('lastSavedTime').textContent = `Saved: ${snapshot.lastSaved}`;
+                })
+                .catch((e) => {
+                    console.warn('IndexedDB save failed:', e);
+                    document.getElementById('lastSavedTime').textContent = '⚠️ Save failed!';
+                    if (!storageWarned) {
+                        storageWarned = true;
+                        alert('บันทึกอัตโนมัติไม่สำเร็จ (' + ((e && e.message) || e) + ')\n\nข้อมูลยังอยู่จนกว่าจะปิดหน้านี้ แนะนำกด Export เก็บไฟล์ Excel ไว้ก่อน');
+                    }
+                });
+            return writeChain;
+        }
+
+        async function loadSession() {
+            let data = null;
+            let fromLegacy = false;
+            try {
+                data = await idbGet(SESSION_KEY);
+            } catch (e) {
+                console.warn('IndexedDB unavailable:', e);
+            }
+
+            // ย้ายข้อมูลเดิมที่เคยบันทึกไว้ใน localStorage (เวอร์ชันก่อนหน้า) เข้า IndexedDB ให้อัตโนมัติ
+            if (!data) {
+                const legacy = localStorage.getItem(SESSION_KEY);
+                if (legacy) {
+                    try {
+                        data = JSON.parse(legacy);
+                        fromLegacy = true;
+                        localStorage.removeItem(SESSION_KEY);
+                    } catch (e) {
+                        data = null;
+                    }
+                }
+            }
+            if (!data) return;
+
+            try {
+                poData = data.poData || [];
+                billImagesArray = data.billImagesArray || [];
+                poFileName = data.poFileName || '';
+                supplierName = data.supplierName || '';
+                poNumber = data.poNumber || '';
+
+                if (data.rawWorkbookArrayBuffer) {
+                    rawWorkbookArrayBuffer = (data.rawWorkbookArrayBuffer instanceof ArrayBuffer)
+                        ? data.rawWorkbookArrayBuffer
+                        : base64ToArrayBuffer(data.rawWorkbookArrayBuffer); // ข้อมูลเก่าที่เคยเก็บเป็น base64
+                }
+
+                if (data.receivedDate) document.getElementById('receivedDateInput').value = data.receivedDate;
+                if (data.receiverName) document.getElementById('receiverNameInput').value = data.receiverName;
+
+                if (poData.length > 0) {
+                    updateDropdownOptions();
+                    renderPOItemsList();
+                }
+
+                if (billImagesArray.length > 0) {
+                    updateBillUI();
+                }
+
+                if (data.lastSaved) {
+                    document.getElementById('lastSavedTime').textContent = `Restored (${data.lastSaved})`;
+                }
+
+                if (fromLegacy) persistSession();
+            } catch (e) {
+                console.error('Failed to restore session:', e);
+            }
+        }
+
+        async function clearSavedData() {
+            if (!confirm('คุณต้องการล้างข้อมูลทั้งหมดที่บันทึกไว้ในเครื่องเพื่อเริ่มรายการใหม่หรือไม่?')) return;
+            try {
+                await idbDelete(SESSION_KEY);
+            } catch (e) {
+                console.warn(e);
+            }
+            localStorage.removeItem(SESSION_KEY); // ล้างไฟล์เก่าเวอร์ชัน localStorage ด้วยถ้ามี
+            location.reload();
+        }
+
+        // ==================== Excel Auto-save to File (ใช้ได้บนคอม Chrome/Edge) ====================
+        // ผูกไฟล์ปลายทางไว้ไฟล์เดียวผ่าน File System Access API แล้วเขียนทับทุกครั้งที่บันทึกรายการ
+        // มือถือไม่รองรับ ใช้วิธีเดิมคือกด Export ตอนจบแทน
+        const EXCEL_HANDLE_KEY = 'excel_auto_file_handle';
+        let excelAutoHandle = null;
+        let excelWriteChain = Promise.resolve();
+
+        async function loadExcelAutoHandle() {
+            try {
+                const handle = await idbGet(EXCEL_HANDLE_KEY);
+                if (handle) {
+                    excelAutoHandle = handle;
+                    // ถ้าเบราว์เซอร์ยังจำสิทธิ์ไว้ เขียนได้เลย ถ้าไม่จะขอสิทธิ์ตอนกดบันทึกครั้งแรก
+                    updateExcelAutoUI();
+                }
+            } catch (e) {
+                console.warn('Failed to restore Excel auto-save file handle:', e);
+            }
+        }
+
+        async function toggleExcelAutoSave() {
+            try {
+                if (excelAutoHandle) {
+                    excelAutoHandle = null;
+                    try {
+                        await idbDelete(EXCEL_HANDLE_KEY);
+                    } catch (e) {
+                        console.warn(e);
+                    }
+                    updateExcelAutoUI();
+                    return;
+                }
+
+                if (!window.showSaveFilePicker) {
+                    alert('เบราว์เซอร์นี้ไม่รองรับการเขียนไฟล์อัตโนมัติ\n\nโหมดนี้ใช้ได้บนคอมพิวเตอร์ที่เปิดด้วย Google Chrome หรือ Microsoft Edge\n\nบนมือถือให้ยิงรูปจนครบแล้วกด Export ทีเดียวตอนจบเหมือนเดิม');
+                    return;
+                }
+
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: REPORT_FILENAME,
+                    types: [{ description: 'Excel Workbook', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] } }]
+                });
+                excelAutoHandle = handle;
+                await idbSet(EXCEL_HANDLE_KEY, handle);
+                updateExcelAutoUI();
+
+                await autoSaveToExcelFile(); // เขียนไฟล์แรกทันทีให้แน่ใจว่าพร้อมใช้
+            } catch (e) {
+                if (e && e.name === 'AbortError') return; // ผู้ใช้กดยกเลิกหน้าต่างเลือกไฟล์
+                console.warn(e);
+                alert('ตั้งค่าไฟล์บันทึกอัตโนมัติไม่สำเร็จ: ' + e.message);
+            }
+        }
+
+        function updateExcelAutoUI(extraMessage, isError) {
+            const statusEl = document.getElementById('excelAutoStatus');
+            const btn = document.getElementById('excelAutoToggleBtn');
+            if (!statusEl || !btn) return;
+
+            if (excelAutoHandle) {
+                statusEl.textContent = extraMessage ? `💾 ${extraMessage}` : `💾 ลงไฟล์: ${excelAutoHandle.name}`;
+                statusEl.className = 'text-[10px] font-bold truncate ' + (isError ? 'text-rose-700' : 'text-emerald-700');
+                btn.textContent = 'ปิด';
+                btn.className = 'ml-2 flex-shrink-0 bg-rose-100 text-rose-700 px-2 py-1 rounded-md text-[10px] font-bold border border-rose-200 hover:bg-rose-200 transition';
+            } else {
+                statusEl.textContent = '💾 บันทึก Excel อัตโนมัติ: ปิด';
+                statusEl.className = 'text-[10px] font-bold truncate text-stone-500';
+                btn.textContent = 'เปิดใช้งาน';
+                btn.className = 'ml-2 flex-shrink-0 bg-stone-200 text-stone-700 px-2 py-1 rounded-md text-[10px] font-bold border border-stone-300 hover:bg-amber-100 hover:text-amber-900 transition';
+            }
+        }
+
+        // เขียนข้อมูลปัจจุบันทับลงไฟล์ที่ผูกไว้ — จัดคิวให้เขียนทีละครั้ง กันเขียนชนกันตอนบันทึกรัวๆ
+        function autoSaveToExcelFile() {
+            if (!excelAutoHandle) return Promise.resolve();
+            excelWriteChain = excelWriteChain
+                .then(async () => {
+                    const perm = await excelAutoHandle.queryPermission({ mode: 'readwrite' });
+                    if (perm !== 'granted') {
+                        const granted = await excelAutoHandle.requestPermission({ mode: 'readwrite' });
+                        if (granted !== 'granted') {
+                            updateExcelAutoUI('ไม่ได้รับอนุญาตให้เขียนไฟล์', true);
+                            return;
+                        }
+                    }
+                    await exportToExcel(false, excelAutoHandle);
+                    updateExcelAutoUI(`${excelAutoHandle.name} ✓ ${new Date().toLocaleTimeString()}`);
+                })
+                .catch((e) => {
+                    if (e && e.name === 'AbortError') return;
+                    console.warn('Excel auto-save failed:', e);
+                    updateExcelAutoUI('เขียนไฟล์ไม่สำเร็จ: ' + e.message, true);
+                });
+            return excelWriteChain;
+        }
+
+        // ใช้เฉพาะตอนกู้ข้อมูลเก่าที่เคยบันทึกไว้ใน localStorage (เวอร์ชันแรกของหน้าเว็บนี้)
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        // ==================== Direct Column Parsing Logic ====================
+        function importPOExcel(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            poFileName = file.name;
+            document.getElementById('excelInput').value = '';
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                rawWorkbookArrayBuffer = e.target.result;
+                const workbook = XLSX.read(new Uint8Array(rawWorkbookArrayBuffer), { type: 'array' });
+                const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+
+                // ดึงชื่อซัพพลายเออร์และเลขที่ใบสั่งซื้อจากหัวไฟล์ (Sheet1)
+                const pickHeaderCell = (keys) => {
+                    for (const key of keys) {
+                        const cell = worksheet[key];
+                        if (cell && cell.v !== undefined && String(cell.v).trim() !== '') {
+                            const text = String(cell.w || cell.v).trim();
+                            if (text && text !== 'ระบุที่ใบสั่งซื้อ') return text;
+                        }
+                    }
+                    return '';
+                };
+                supplierName = pickHeaderCell(['C1', 'D1', 'E1', 'C2', 'D2', 'E2']);
+                poNumber = pickHeaderCell(['I1', 'J1', 'K1', 'H1', 'G1', 'G2', 'F2']); // เลขที่ PO อยู่ I1 (ขวาของ label เลขที่ใบสั่งซื้อ) - F2 เป็น label วันที่รับของ ต้องไม่ถูกหยิบก่อน
+
+                poData = [];
+
+                for (let r = 5; r <= 200; r++) {
+                    const seqCell = worksheet['B' + r];
+                    const descCell = worksheet['E' + r];
+                    const poQtyCell = worksheet['F' + r];
+                    const priceCell = worksheet['I' + r];
+                    const remarkCell = worksheet['M' + r];
+
+                    if (seqCell && seqCell.v !== undefined && seqCell.v !== '') {
+                        let cleanSeq = String(seqCell.v).trim().replace(/\.$/, '');
+                        
+                        if (!isNaN(cleanSeq) && Number(cleanSeq) > 0) {
+                            let seqNum = Number(cleanSeq);
+                            let desc = descCell ? String(descCell.v).trim() : '';
+
+                            if (desc && desc.length > 0) {
+                                let poQtyVal = 0;
+                                if (poQtyCell && poQtyCell.v !== undefined) {
+                                    poQtyVal = Number(poQtyCell.v) || 0;
+                                }
+
+                                let unitPriceVal = 0;
+                                if (priceCell && priceCell.v !== undefined) {
+                                    unitPriceVal = Number(priceCell.v) || 0;
+                                }
+
+                                let remarkVal = remarkCell ? String(remarkCell.v).trim() : '';
+
+                                poData.push({
+                                    excelRowIndex: r, 
+                                    seq: seqNum,
+                                    description: desc,
+                                    poQty: poQtyVal,
+                                    unitPrice: unitPriceVal,
+                                    receivedQty: 0,
+                                    damagedQty: 0,
+                                    remark: remarkVal,
+                                    image: '',
+                                    damagedImage: ''
+                                });
+                            }
+                        }
+                    }
+                }
+
+                updateDropdownOptions();
+                renderPOItemsList();
+                persistSession();
+                autoSaveToExcelFile();
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function updateModeStatus() {
+            const statusEl = document.getElementById('uploadStatus');
+            if (poData.length === 0) {
+                statusEl.textContent = rawWorkbookArrayBuffer ? 'File loaded (no items)' : 'No file (Manual Mode)';
+                statusEl.className = 'text-[9px] text-stone-500 font-semibold whitespace-nowrap flex-shrink-0';
+            } else if (rawWorkbookArrayBuffer) {
+                statusEl.textContent = `✓ ${poData.length} items (${poFileName})`;
+                statusEl.className = 'text-[9px] text-amber-700 font-bold whitespace-nowrap flex-shrink-0';
+            } else {
+                statusEl.textContent = `📝 Manual Mode: ${poData.length} item(s)`;
+                statusEl.className = 'text-[9px] text-amber-700 font-bold whitespace-nowrap flex-shrink-0';
+            }
+        }
+
+        function updateDropdownOptions() {
+            const select = document.getElementById('poItemSelect');
+            select.innerHTML = '<option value="">-- Select Item --</option>';
+            poData.forEach((item) => {
+                const option = document.createElement('option');
+                option.value = item.seq;
+                const shortDesc = item.description.length > 20 ? item.description.substring(0, 20) + '...' : item.description;
+                option.textContent = `No. ${item.seq}: ${shortDesc} ${item.image ? '📷' : ''}${item.damagedQty > 0 ? ' ⚠️' : ''}`;
+                select.appendChild(option);
+            });
+            updateModeStatus();
+        }
+
+        function enableManualAddItem() {
+            resetSelection();
+            const nextSeq = poData.length > 0 ? Math.max(...poData.map(i => i.seq)) + 1 : 1;
+            document.getElementById('seqInput').value = nextSeq;
+            document.getElementById('itemNameInput').value = '';
+            document.getElementById('itemNameInput').focus();
+        }
+
+        function onSeqInputChange(seqValue) {
+            if (!seqValue) { resetSelection(); return; }
+            const targetItem = poData.find(item => item.seq == Number(seqValue));
+            if (targetItem) {
+                selectItem(targetItem);
+                document.getElementById('poItemSelect').value = targetItem.seq;
+            } else {
+                currentSelectedItem = null;
+                document.getElementById('itemNameInput').value = '';
+                document.getElementById('poQtyInput').value = '';
+                document.getElementById('receivedQtyInput').value = '';
+                document.getElementById('damagedQtyInput').value = '';
+                document.getElementById('unitPriceInput').value = '';
+                document.getElementById('remarkInput').value = '';
+                document.getElementById('poItemSelect').value = '';
+            }
+        }
+
+        function onSelectDropdown(seqVal) {
+            if (!seqVal) { resetSelection(); return; }
+            const targetItem = poData.find(item => item.seq == Number(seqVal));
+            if (targetItem) {
+                selectItem(targetItem);
+                document.getElementById('seqInput').value = targetItem.seq;
+            }
+        }
+
+        function selectItem(item) {
+            invalidatePendingCaptures(); // เปลี่ยนรายการ = ยกเลิกรูปที่ยังย่อค้าง กันรูปไปติดรายการอื่น
+            currentSelectedItem = item;
+            document.getElementById('itemNameInput').value = item.description;
+            document.getElementById('poQtyInput').value = item.poQty;
+            document.getElementById('receivedQtyInput').value = item.receivedQty;
+            document.getElementById('damagedQtyInput').value = item.damagedQty;
+            document.getElementById('unitPriceInput').value = item.unitPrice;
+            document.getElementById('remarkInput').value = item.remark || '';
+
+            if (item.image) {
+                currentBase64Image = item.image;
+                document.getElementById('preview').src = item.image;
+                document.getElementById('preview').classList.remove('hidden');
+                document.getElementById('placeholderText').classList.add('hidden');
+            } else {
+                currentBase64Image = '';
+                document.getElementById('preview').classList.add('hidden');
+                document.getElementById('placeholderText').classList.remove('hidden');
+            }
+
+            if (item.damagedImage) {
+                currentDamagedBase64Image = item.damagedImage;
+                document.getElementById('damagePreview').src = item.damagedImage;
+                document.getElementById('damagePreview').classList.remove('hidden');
+                document.getElementById('placeholderDamageText').classList.add('hidden');
+            } else {
+                currentDamagedBase64Image = '';
+                document.getElementById('damagePreview').classList.add('hidden');
+                document.getElementById('placeholderDamageText').classList.remove('hidden');
+            }
+
+            updateQuantityRules();
+        }
+
+        function resetSelection() {
+            invalidatePendingCaptures();
+            currentSelectedItem = null;
+            currentBase64Image = '';
+            currentDamagedBase64Image = '';
+            document.getElementById('seqInput').value = '';
+            document.getElementById('poItemSelect').value = '';
+            document.getElementById('itemNameInput').value = '';
+            document.getElementById('poQtyInput').value = '';
+            document.getElementById('receivedQtyInput').value = '';
+            document.getElementById('damagedQtyInput').value = '';
+            document.getElementById('unitPriceInput').value = '';
+            document.getElementById('remarkInput').value = '';
+            
+            document.getElementById('preview').classList.add('hidden');
+            document.getElementById('placeholderText').classList.remove('hidden');
+            document.getElementById('damagePreview').classList.add('hidden');
+            document.getElementById('placeholderDamageText').classList.remove('hidden');
+
+            updateQuantityRules();
+        }
+
+        // ย่อขนาดรูปก่อนบันทึก/แนบ: รักษาความละเอียดสูงสุดที่ทำได้ภายในงบขนาดไฟล์ (targetBytes)
+        // ลดคุณภาพ JPEG ทีละขั้นก่อน ถ้ายังเกินเป้าจึงลดความละเอียด โดยไม่ต่ำกว่า 1024px เพื่อความคมชัด
+        const JPEG_MIN_QUALITY = 0.5;
+        const MIN_IMAGE_DIM = 1024;
+        function compressImageFile(file, maxDim, quality, targetBytes) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const originalDataUrl = e.target.result;
+                    const img = new Image();
+                    img.onload = function() {
+                        try {
+                            const longest = Math.max(img.width, img.height);
+                            let scale = Math.min(1, maxDim / longest);
+                            let q = quality;
+                            let canvas = null;
+                            let dataUrl = '';
+                            const draw = () => {
+                                const w = Math.max(1, Math.round(img.width * scale));
+                                const h = Math.max(1, Math.round(img.height * scale));
+                                const c = document.createElement('canvas');
+                                c.width = w;
+                                c.height = h;
+                                const ctx = c.getContext('2d');
+                                ctx.fillStyle = '#FFFFFF';
+                                ctx.fillRect(0, 0, w, h);
+                                ctx.drawImage(img, 0, 0, w, h);
+                                canvas = c;
+                            };
+                            const encode = () => {
+                                dataUrl = canvas.toDataURL('image/jpeg', q);
+                                return Math.round(dataUrl.length * 0.75); // base64 -> ขนาดไบต์โดยประมาณ
+                            };
+                            draw();
+                            let bytes = encode();
+                            while (targetBytes && bytes > targetBytes) {
+                                if (q > JPEG_MIN_QUALITY) {
+                                    q = Math.max(JPEG_MIN_QUALITY, q - 0.1);
+                                } else if (longest * scale > MIN_IMAGE_DIM) {
+                                    scale = Math.max(MIN_IMAGE_DIM / longest, scale * 0.85);
+                                    draw();
+                                } else {
+                                    break; // เบาสุดทางแล้ว เก็บขนาดนี้ไว้เพื่อความคมชัด
+                                }
+                                bytes = encode();
+                            }
+                            resolve({ dataUrl, width: canvas.width, height: canvas.height });
+                        } catch (err) {
+                            resolve({ dataUrl: originalDataUrl, width: img.width, height: img.height });
+                        }
+                    };
+                    img.onerror = function() { resolve(null); };
+                    img.src = originalDataUrl;
+                };
+                reader.onerror = function() { resolve(null); };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // ปุ่ม Save จะกดไม่ได้ (พร้อมข้อความแจ้ง) ระหว่างที่รูปที่เพิ่งถ่ายยังย่อ/แปลงไม่เสร็จ
+        function setSaveButtonBusy(busy) {
+            saveButtonBusyCount = Math.max(0, saveButtonBusyCount + (busy ? 1 : -1));
+            const btn = document.getElementById('saveItemBtn');
+            btn.disabled = saveButtonBusyCount > 0;
+            btn.textContent = saveButtonBusyCount > 0 ? '⏳ กำลังประมวลผลรูป...' : '✓ Save Item Photo & Quantities';
+        }
+
+        // เปลี่ยนรายการ/ล้างฟอร์ม = ยกเลิกรูปที่ย่อค้างอยู่ ไม่ให้ไปเด้งใส่รายการอื่นภายหลัง
+        function invalidatePendingCaptures() {
+            captureTokens.normal++;
+            captureTokens.damage++;
+        }
+
+        async function previewImage(event, type) {
+            const input = event.target;
+            const file = input.files[0];
+            if (!file) return;
+
+            const token = ++captureTokens[type];
+            input.value = '';
+            setSaveButtonBusy(true);
+
+            const processing = (async () => {
+                // รูปสินค้า: สูงสุด 1600px คุณภาพเริ่ม 0.85 คุมไม่เกิน ~150KB/รูป (100 รูป ≈ 15MB)
+                const result = await compressImageFile(file, 1600, 0.85, 150 * 1024);
+                if (token !== captureTokens[type]) return; // มีการถ่ายใหม่/เปลี่ยนรายการระหว่างย่อ ทิ้งรอบนี้
+                if (!result) {
+                    alert('ไม่สามารถอ่านไฟล์รูปภาพนี้ได้ กรุณาถ่าย/เลือกรูปใหม่อีกครั้ง');
+                    return;
+                }
+
+                if (type === 'normal') {
+                    currentBase64Image = result.dataUrl;
+                    document.getElementById('preview').src = currentBase64Image;
+                    document.getElementById('preview').classList.remove('hidden');
+                    document.getElementById('placeholderText').classList.add('hidden');
+                } else if (type === 'damage') {
+                    currentDamagedBase64Image = result.dataUrl;
+                    document.getElementById('damagePreview').src = currentDamagedBase64Image;
+                    document.getElementById('damagePreview').classList.remove('hidden');
+                    document.getElementById('placeholderDamageText').classList.add('hidden');
+                }
+                updateQuantityRules();
+            })();
+
+            // จดจำ promise ล่าสุดไว้ให้ปุ่ม Save รอ กันรูปยังย่อไม่เสร็จแล้วถูกบันทึกข้าม
+            if (type === 'normal') normalImageReady = processing;
+            else damagedImageReady = processing;
+
+            try {
+                await processing;
+            } finally {
+                setSaveButtonBusy(false);
+            }
+        }
+
+        function clearImage(type) {
+            captureTokens[type]++; // ยกเลิกรูปที่ยังย่อค้างอยู่ของช่องนี้ด้วย
+            if (type === 'normal') {
+                currentBase64Image = '';
+                document.getElementById('preview').src = '';
+                document.getElementById('preview').classList.add('hidden');
+                document.getElementById('placeholderText').classList.remove('hidden');
+                document.getElementById('cameraInput').value = '';
+                document.getElementById('galleryInput').value = '';
+            } else if (type === 'damage') {
+                currentDamagedBase64Image = '';
+                document.getElementById('damagePreview').src = '';
+                document.getElementById('damagePreview').classList.add('hidden');
+                document.getElementById('placeholderDamageText').classList.remove('hidden');
+                document.getElementById('damageCameraInput').value = '';
+                document.getElementById('damageGalleryInput').value = '';
+            }
+            updateQuantityRules();
+        }
+
+        async function handleBillUpload(event) {
+            const files = Array.from(event.target.files);
+            event.target.value = '';
+            if (files.length === 0) return;
+
+            for (const file of files) {
+                // รูปใบส่งของ: ข้อความต้องอ่านได้ จึงมีงบขนาดไฟล์ต่อรูปสูงกว่ารูปสินค้า
+                const result = await compressImageFile(file, 1800, 0.85, 200 * 1024);
+                if (result) {
+                    billImagesArray.push({
+                        src: result.dataUrl,
+                        width: result.width,
+                        height: result.height
+                    });
+                }
+            }
+            updateBillUI();
+            persistSession();
+            autoSaveToExcelFile();
+        }
+
+        function updateBillUI() {
+            const statusElem = document.getElementById('billStatus');
+            const container = document.getElementById('billPreviewContainer');
+            
+            statusElem.textContent = `✓ Attached bills: ${billImagesArray.length} image(s)`;
+            statusElem.className = "text-[11px] text-amber-900 text-center font-bold";
+            
+            container.innerHTML = '';
+            if (billImagesArray.length > 0) {
+                container.classList.remove('hidden');
+                billImagesArray.forEach((imgObj, idx) => {
+                    const thumb = document.createElement('div');
+                    thumb.className = "relative w-12 h-12 border border-amber-300 rounded overflow-hidden flex-shrink-0 bg-white shadow-xs";
+                    thumb.innerHTML = `
+                        <img src="${imgObj.src}" class="w-full h-full object-cover">
+                        <button type="button" onclick="removeBillImage(${idx})" class="absolute top-0 right-0 bg-rose-700 text-white text-[8px] px-1 font-bold">×</button>
+                    `;
+                    container.appendChild(thumb);
+                });
+            } else {
+                container.classList.add('hidden');
+            }
+        }
+
+        function removeBillImage(index) {
+            billImagesArray.splice(index, 1);
+            updateBillUI();
+            if (billImagesArray.length === 0) {
+                document.getElementById('billStatus').textContent = "No bills attached (0 images)";
+                document.getElementById('billStatus').className = "text-[11px] text-amber-800 text-center font-semibold";
+            }
+            persistSession();
+            autoSaveToExcelFile();
+        }
+async function assignImageAndData() {
+    if (isSavingItem) return; // กันกดซ้ำรัวๆ จนบันทึกซ้อนกัน
+    isSavingItem = true;
+
+    try {
+        const seqVal = Number(document.getElementById('seqInput').value);
+        const descVal = document.getElementById('itemNameInput').value.trim();
+
+        if (!seqVal) {
+            alert('Please enter Item No.');
+            return;
+        }
+
+        if (!descVal) {
+            alert('Please enter Item Description.');
+            return;
+        }
+
+        // รอให้รูปที่เพิ่งถ่ายย่อ/แปลงเสร็จก่อนเสมอ ไม่งั้นรูปจะหลุดไปติดกับรายการถัดไปที่เด้งไปรอ
+        await Promise.all([normalImageReady, damagedImageReady]);
+
+        const poQtyVal = Number(document.getElementById('poQtyInput').value) || 0;
+        const recQty = Number(document.getElementById('receivedQtyInput').value) || 0;
+        const damQty = Number(document.getElementById('damagedQtyInput').value) || 0;
+        const unitPriceVal = Number(document.getElementById('unitPriceInput').value) || 0;
+        const remarkVal = document.getElementById('remarkInput').value.trim();
+
+        // ==========================================
+        // Quantity Validation
+        // Received Qty + Damaged Qty ต้องไม่เกิน PO Qty
+        // ถ้าเกิน ต้องกดยืนยันอีกครั้ง
+        // ==========================================
+        const totalQty = recQty + damQty;
+
+        if (totalQty > poQtyVal) {
+            const overQty = totalQty - poQtyVal;
+
+            const confirmMessage =
+                `⚠️ WARNING: Quantity Exceeds PO!\n\n` +
+                `PO Qty       : ${poQtyVal}\n` +
+                `Received Qty : ${recQty}\n` +
+                `Damaged Qty  : ${damQty}\n` +
+                `Total Qty    : ${totalQty}\n` +
+                `Exceeds PO   : ${overQty}\n\n` +
+                `Do you want to save this item anyway?`;
+
+            const confirmed = confirm(confirmMessage);
+
+            // ถ้าไม่ยืนยัน ให้หยุดการบันทึก
+            if (!confirmed) {
+                return;
+            }
+        }
+
+        let targetItem = poData.find(item => item.seq === seqVal);
+
+        if (!targetItem) {
+            // ต่อท้ายแถวสุดท้ายของไฟล์ PO เดิม (กันเขียนทับแถวรายการที่มีอยู่)
+            const maxRow = poData.reduce((m, i) => Math.max(m, i.excelRowIndex || 0), 4);
+            targetItem = {
+                excelRowIndex: maxRow + 1,
+                manualAdded: true,
+                seq: seqVal,
+                description: descVal,
+                poQty: poQtyVal,
+                unitPrice: unitPriceVal,
+                receivedQty: recQty,
+                damagedQty: damQty,
+                remark: remarkVal,
+                image: currentBase64Image,
+                damagedImage: currentDamagedBase64Image
+            };
+
+            poData.push(targetItem);
+            poData.sort((a, b) => a.seq - b.seq);
+
+        } else {
+            targetItem.description = descVal;
+            targetItem.poQty = poQtyVal;
+            targetItem.receivedQty = recQty;
+            targetItem.damagedQty = damQty;
+            targetItem.unitPrice = unitPriceVal;
+            targetItem.remark = remarkVal;
+
+            if (currentBase64Image !== undefined) {
+                targetItem.image = currentBase64Image;
+            }
+
+            if (currentDamagedBase64Image !== undefined) {
+                targetItem.damagedImage = currentDamagedBase64Image;
+            }
+        }
+
+        alert(`Item No. ${seqVal} data saved successfully.`);
+
+        // พร้อมกรอกรายการถัดไปทันที — โหมด Manual กรอกต่อเนื่องได้เหมือนมี PO
+        const nextSeq = seqVal + 1;
+        resetSelection();
+        document.getElementById('seqInput').value = nextSeq;
+        onSeqInputChange(nextSeq);
+        document.getElementById('itemNameInput').focus();
+
+        updateDropdownOptions();
+        renderPOItemsList();
+        persistSession();
+        autoSaveToExcelFile(); // โหมดผูกไฟล์ Excel: เขียนทับไฟล์ปลายทางทันที
+    } finally {
+        isSavingItem = false;
+    }
+}
+
+
+        function renderPOItemsList() {
+            const container = document.getElementById('poItemsList');
+            document.getElementById('itemCount').textContent = poData.length;
+            container.innerHTML = '';
+
+            if (poData.length === 0) {
+                container.innerHTML = '<p class="text-xs text-stone-400 text-center py-4">No items found</p>';
+                return;
+            }
+
+            poData.forEach((item) => {
+                const card = document.createElement('div');
+                card.className = `flex items-center space-x-3 p-2 border rounded-md text-xs transition ${item.damagedQty > 0 ? 'bg-rose-50/60 border-rose-200' : (item.image ? 'bg-amber-50/50 border-amber-200' : 'bg-white border-stone-200')}`;
+                card.innerHTML = `
+                    <div class="w-[45px] h-[45px] bg-stone-100 border border-stone-200 rounded overflow-hidden flex-shrink-0 flex items-center justify-center">
+                        ${item.image ? `<img src="${item.image}" class="w-full h-full object-cover">` : '<span class="text-[9px] text-stone-400">No Image</span>'}
+                    </div>
+                    <div class="flex-1 min-w-0" onclick="selectItemFromList(${item.seq})">
+                        <div class="font-bold text-stone-900 truncate">No. ${item.seq}: ${item.description}</div>
+                        <div class="text-[11px] text-stone-600">PO: <b class="text-stone-900">${item.poQty}</b> | Rec: <b class="text-amber-800">${item.receivedQty}</b> | <span class="text-rose-700 font-bold">Dmg: ${item.damagedQty}</span></div>
+                        ${item.remark ? `<div class="text-[10px] text-stone-500 italic truncate">💬 ${item.remark}</div>` : ''}
+                    </div>
+                    <div class="flex flex-col gap-1 items-end">
+                        ${item.image ? '<span class="text-[8px] bg-stone-800 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30">Pic Saved</span>' : ''}
+                        ${item.damagedQty > 0 ? '<span class="text-[8px] bg-rose-700 text-white px-1.5 py-0.5 rounded font-bold">Damaged</span>' : ''}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function selectItemFromList(seq) {
+            const item = poData.find(i => i.seq === seq);
+            if (item) {
+                selectItem(item);
+                document.getElementById('seqInput').value = item.seq;
+                document.getElementById('poItemSelect').value = item.seq;
+            }
+        }
+
+        // ==================== LINE Share Function ====================
+        const REPORT_FILENAME = 'Navera_PO_Received_Bills.xlsx';
+
+        function buildLineMessage() {
+            const rawDateVal = document.getElementById('receivedDateInput').value;
+            let dateStr = '-';
+            if (rawDateVal) {
+                const d = new Date(rawDateVal);
+                dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+            }
+
+            const receiverName = document.getElementById('receiverNameInput').value.trim() || '-';
+            const totalReceivedQty = poData.reduce((sum, i) => sum + (Number(i.receivedQty) || 0), 0);
+            const damagedItems = poData.filter(i => (Number(i.damagedQty) || 0) > 0);
+            const totalDamagedCost = damagedItems.reduce((sum, i) => sum + ((Number(i.damagedQty) || 0) * (Number(i.unitPrice) || 0)), 0);
+            const fmt = (n) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            let msg = `📦 Goods Receiving Report - Navera Phuket\n` +
+                '----------------------------------------\n' +
+                `วันที่รับของ: ${dateStr}\n` +
+                `ผู้รับของ: ${receiverName}\n` +
+                (supplierName ? `ซัพพลายเออร์: ${supplierName}\n` : '') +
+                (poNumber ? `เลขที่ใบสั่งซื้อ: ${poNumber}\n` : '') +
+                '----------------------------------------\n\n' +
+                'สรุป\n' +
+                `- รายการทั้งหมด: ${poData.length} รายการ\n` +
+                `- รับของรวม: ${totalReceivedQty} ชิ้น\n` +
+                `- สินค้าชำรุด: ${damagedItems.length} รายการ\n`;
+
+            // LINE ปฏิเสธข้อความที่ทำให้ URL ยาวเกินราว 4,000 ตัวอักษรด้วย HTTP 400
+            // จึงใส่รายการสินค้าชำรุดได้เท่าที่พอดีความยาว และเก็บยอดรวมไว้ท้ายข้อความเสมอ
+            const MAX_LINE_TEXT = 350;
+            const tail = `รวมความเสียหาย: ${fmt(totalDamagedCost)}\n(ไฟล์รายงานฉบับเต็ม: ${REPORT_FILENAME})`;
+            let added = 0;
+            if (damagedItems.length > 0) {
+                msg += '\nสินค้าชำรุด\n';
+                for (const i of damagedItems) {
+                    const line = `- No.${i.seq} ${i.description} | ชำรุด: ${i.damagedQty} | ยอดเสียหาย: ${fmt(i.damagedQty * i.unitPrice)}\n`;
+                    if (msg.length + line.length + tail.length > MAX_LINE_TEXT) break;
+                    msg += line;
+                    added++;
+                }
+                if (added < damagedItems.length) {
+                    msg += `(แสดง ${added}/${damagedItems.length} รายการ ที่เหลือดูในไฟล์แนบ)\n`;
+                }
+                msg += tail;
+            } else {
+                msg += `\n(ไฟล์รายงานฉบับเต็ม: ${REPORT_FILENAME})`;
+            }
+            return msg;
+        }
+
+        function openLineShare() {
+            const text = buildLineMessage();
+            // ต้องใช้ social-plugins โดยตรง: ปลายทาง line.me/R/msg/text/ เดิมจะ redirect ไปเป็น
+            // lineit/share?url=&text=text=... ทำให้ข้อความที่ส่งเข้าแชทขึ้นต้นด้วยคำว่า "text=" ติดไปด้วย
+            const httpsUrl = 'https://social-plugins.line.me/lineit/share?text=' + encodeURIComponent(text);
+            const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+            if (isMobile) {
+                // เด้งเปิดแอป LINE บนมือถือ ถ้าเครื่องไม่ได้ติดตั้ง LINE จะเปิดลิงก์สำรองแทน
+                const start = Date.now();
+                window.location.href = 'line://msg/text/?text=' + encodeURIComponent(text);
+                setTimeout(() => {
+                    if (!document.hidden && Date.now() - start < 3000) window.location.href = httpsUrl;
+                }, 1200);
+            } else {
+                // เครื่อง PC เปิดผ่านลิงก์สากลของ LINE (เปิดแอป LINE PC ถ้าติดตั้งไว้)
+                window.location.href = httpsUrl;
+            }
+        }
+
+        // แผงปุ่มแชร์ไฟล์เข้าแอป LINE บนมือถือ ผ่าน Web Share API ของระบบ
+        // ต้องรอให้ผู้ใช้แตะปุ่มก่อน เพราะเบราว์เซอร์อนุญาต navigator.share เฉพาะช่วงที่เพิ่งมีการสัมผัสหน้าจอ
+        function showLineShareSheet(excelFile) {
+            const ov = document.createElement('div');
+            ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+            ov.innerHTML = `
+                <div style="background:#fff;border-radius:14px;max-width:340px;width:100%;padding:18px;text-align:center">
+                    <div style="font-weight:800;color:#06C755;font-size:15px">📲 พร้อมแชร์ไปทาง LINE</div>
+                    <p style="font-size:12px;color:#44403c;line-height:1.6;margin:10px 0 14px">ไฟล์ <b>${REPORT_FILENAME}</b> ดาวน์โหลดลงเครื่องแล้ว<br>แตะปุ่มด้านล่าง แล้วเลือก <b>LINE</b> ในหน้าแชร์ของระบบ<br>จากนั้นเลือกแชทผู้รับ ไฟล์จะถูกส่งเข้าแชทโดยตรง</p>
+                    <button id="btnDoShare" style="width:100%;background:#06C755;color:#fff;border:0;border-radius:10px;padding:12px;font-size:14px;font-weight:800">แชร์ไฟล์ Excel ผ่าน LINE</button>
+                    <button id="btnCloseShare" style="width:100%;background:transparent;color:#78716c;border:0;padding:10px;font-size:12px;margin-top:4px">ปิด</button>
+                </div>`;
+            document.body.appendChild(ov);
+            ov.querySelector('#btnDoShare').onclick = async () => {
+                try {
+                    await navigator.share({ files: [excelFile], title: 'Goods Receiving Report', text: buildLineMessage() });
+                } catch (e) {
+                    if (e && e.name !== 'AbortError') {
+                        alert('แชร์ไฟล์ไม่สำเร็จ: ' + e.message + '\n\nใช้ไฟล์ที่ดาวน์โหลดไว้ในโฟลเดอร์ Downloads แนบเข้าแชทแทนได้เลย');
+                    }
+                }
+                ov.remove();
+            };
+            ov.querySelector('#btnCloseShare').onclick = () => ov.remove();
+        }
+
+        async function sendReportByLine() {
+            try {
+                if (poData.length === 0) {
+                    alert('Please add or import at least one item first.');
+                    return;
+                }
+
+                if (!confirm('ระบบจะดาวน์โหลดไฟล์ Navera_PO_Received_Bills.xlsx แล้วเปิดหน้าแชร์ให้ส่งเข้า LINE\n\n📱 มือถือ: แตะ "แชร์ไฟล์ Excel ผ่าน LINE" เลือก LINE แล้วเลือกแชทผู้รับ — ไฟล์จะถูกส่งเข้าแชทโดยตรง\n\n💻 คอมพิวเตอร์: จะได้ข้อความสรุปใน LINE แล้วลากไฟล์จากโฟลเดอร์ Downloads ใส่แชทเอง (LINE ไม่มีช่องทางให้เว็บแนบไฟล์อัตโนมัติบนคอม)\n\nดำเนินการต่อหรือไม่?')) {
+                    return;
+                }
+
+                await exportToExcel(true);
+            } catch (error) {
+                console.error(error);
+                alert('LINE error: ' + error.message);
+            }
+        }
+
+        // ==================== Export Function ====================
+
+        // จัดการเซลล์ที่ถูก Merge ในไฟล์ PO: ถ้าเป็นเซลล์ลูก ให้เขียนค่าที่เซลล์หลัก (มุมซ้ายบนของช่วง Merge) แทน
+        function getWritableCell(row, colIdx) {
+            const cell = row.getCell(colIdx);
+            if (cell && cell.isMerged && cell.master && cell.master !== cell) {
+                return cell.master;
+            }
+            return cell;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // ลบ attribute editAs ที่ ExcelJS เขียนผิดสเปก ECMA-376 ก่อนเซฟไฟล์
+        //   ExcelJS 4.x เขียน <xdr:oneCellAnchor editAs="oneCell"> ให้รูปทุกใบ
+        //   แต่ CT_OneCellAnchor ไม่มี attribute editAs (มีเฉพาะ CT_TwoCellAnchor)
+        //   → Excel เปิดได้ปกติ (ไม่ขึ้น repair) แต่ parser ที่เข้มงวดอย่าง openpyxl
+        //     จะโยน TypeError แล้วทิ้งรูปทั้งชีตของชีตนั้น (รูปดูเหมือนหายทั้งชุด)
+        //   ทางแก้ที่ปลอดภัย: ลบ editAs ออกเฉยๆ — ตำแหน่ง/ขนาดรูปไม่เปลี่ยน
+        //   (Excel เองก็ลบ attribute นี้ทิ้งเมื่อ Save As ไฟล์เดิม)
+        //   ต้นทุนจริงที่วัดได้: ~0.3 วินาที แม้ไฟล์ 84 MB เพราะ JSZip ใช้ข้อมูลรูปที่บีบอัดไว้เดิม
+        //   ตรวจซ้ำได้ด้วย: python tests/check-editAs.py <ไฟล์.xlsx>
+        // ─────────────────────────────────────────────────────────────────────────
+        async function stripInvalidAnchorEditAs(buffer) {
+            // โหลด JSZip ไม่ได้ = ส่งไฟล์เดิมกลับไป (Excel ยังเปิดได้ปกติ ไม่ทำให้ export พัง)
+            if (typeof JSZip === 'undefined') return buffer;
+            try {
+                const zip = await JSZip.loadAsync(buffer);
+
+                const drawings = [];
+                zip.forEach((p, entry) => {
+                    if (/^xl\/drawings\/drawing\d+\.xml$/.test(p)) drawings.push([p, entry]);
+                });
+                if (drawings.length === 0) return buffer;
+
+                let removed = 0;
+                for (const [p, entry] of drawings) {
+                    const xml = await entry.async('string');
+                    const fixed = xml.replace(/<xdr:oneCellAnchor\b[^>]*?\s+editAs="[^"]*"/g, '<xdr:oneCellAnchor');
+                    if (fixed !== xml) {
+                        removed += (xml.match(/<xdr:oneCellAnchor\b[^>]*?\s+editAs="[^"]*"/g) || []).length;
+                        zip.file(p, fixed);
+                    }
+                }
+                if (removed === 0) return buffer;
+                console.log(`stripInvalidAnchorEditAs: ลบ editAs ${removed} จุด`);
+
+                return await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+            } catch (err) {
+                // ถ้าซ่อมไม่สำเร็จก็ยังเซฟไฟล์เดิมได้ (Excel ใช้งานได้ ไม่ควรทำให้ผู้ใช้ export ไม่ได้)
+                console.warn('stripInvalidAnchorEditAs: ใช้ไฟล์เดิม (Excel ยังเปิดได้ปกติ)', err);
+                return buffer;
+            }
+        }
+
+        // silentTarget = FileSystemFileHandle ของโหมดบันทึกอัตโนมัติ (เขียนทับไฟล์เงียบๆ แทนดาวน์โหลด+LINE)
+        async function exportToExcel(openLineAfter = false, silentTarget = null) {
+            try {
+                if (poData.length === 0) {
+                    if (!silentTarget) alert('Please add or import at least one item first.');
+                    return;
+                }
+
+                const workbook = new ExcelJS.Workbook();
+                let worksheet;
+
+                if (rawWorkbookArrayBuffer) {
+                    await workbook.xlsx.load(rawWorkbookArrayBuffer);
+                    worksheet = workbook.worksheets[0];
+
+                    // แปลง shared formula (สูตรกลุ่มที่ตัวลูกอ้างอิงเซลล์แม่ เช่น คอลัมน์ J, L ของไฟล์ PO)
+                    // ให้เป็นสูตรปกติทุกเซลล์ ก่อนที่โค้ดด้านล่างจะเขียนค่าทับ เพราะถ้าเซลล์แม่ถูกเขียนทับ
+                    // ตัวลูกที่ยังเหลือจะชี้หาแม่ไม่เจอทำให้ ExcelJS throw
+                    // "Shared Formula master must exist above and or left of clone"
+                    worksheet.eachRow((row) => {
+                        row.eachCell({ includeEmpty: false }, (cell) => {
+                            const m = cell.model;
+                            if (!m) return;
+                            if (m.sharedFormula) {
+                                const f = cell.formula; // แปลงสูตรจากเซลล์แม่ (ต้องทำก่อนเขียนทับ)
+                                if (f) cell.value = { formula: f, result: m.result };
+                            } else if (m.shareType === 'shared' && m.formula) {
+                                cell.value = { formula: m.formula, result: m.result };
+                            }
+                        });
+                    });
+                } else {
+                    worksheet = workbook.addWorksheet('PO Load');
+
+                    // ส่วนหัวเลียนแบบเทมเพลต PO Load
+                    worksheet.getCell('B1').value = "ชื่อผู้ขาย";
+                    worksheet.getCell('B1').font = { name: 'Angsana New', size: 14, bold: true };
+                    worksheet.getCell('B2').value = "Supplier's name";
+                    worksheet.getCell('B2').font = { name: 'Angsana New', size: 14 };
+                    worksheet.getCell('F1').value = "เลขที่ใบสั่งซื้อ";
+                    worksheet.getCell('F1').font = { name: 'Angsana New', size: 14, bold: true };
+                    worksheet.getCell('H2').value = "Received BY";
+                    worksheet.getCell('H2').font = { name: 'Angsana New', size: 14, bold: true };
+
+                    // หัวตาราง 2 แถวเหมือนเทมเพลต: แถว 3 ภาษาไทย / แถว 4 ภาษาอังกฤษ (คอลัมน์ B-N)
+                    const thaiHeaders = { 2: 'ลำดับที่', 3: 'รูปที่ส่ง', 4: 'โค้ดสินค้า', 5: 'รายละเอียด', 6: 'จำนวน', 7: 'หน่วย', 8: 'รับของ', 9: 'ราคา/หน่วย', 10: 'จำนวนเงิน', 11: 'ชำรุด/เสียหาย', 12: 'ของไม่ครบ', 13: 'หมายเหตุ' };
+                    const engHeaders = { 2: 'No.', 3: 'Photo', 4: 'Code', 5: 'Description', 6: 'Quantity', 7: 'Unit', 8: 'Received', 9: 'Unit Price', 10: 'Amount', 11: 'Damage/Defect', 12: 'Incomplete', 13: 'Remark' };
+
+                    [thaiHeaders, engHeaders].forEach((map, i) => {
+                        const hRow = worksheet.getRow(i + 3);
+                        Object.keys(map).forEach((c) => {
+                            const cell = hRow.getCell(Number(c));
+                            cell.value = map[c];
+                            cell.font = { name: 'Angsana New', size: 14, bold: true };
+                            cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                            cell.border = {
+                                top: { style: 'thin' }, left: { style: 'thin' },
+                                bottom: { style: 'thin' }, right: { style: 'thin' }
+                            };
+                        });
+                        hRow.height = 22;
+                    });
+
+                    // ความกว้างคอลัมน์ B-M ให้ใกล้เคียงเทมเพลต PO
+                    const manualColWidths = { 2: 8, 3: 31.5, 4: 16, 5: 46, 6: 11, 7: 10, 8: 12, 9: 12, 10: 14, 11: 14, 12: 12, 13: 24 };
+                    Object.keys(manualColWidths).forEach((c) => { worksheet.getColumn(Number(c)).width = manualColWidths[c]; });
+
+                    worksheet.views = [{ state: 'frozen', ySplit: 4 }];
+                }
+
+                const rawDateVal = document.getElementById('receivedDateInput').value;
+                let formattedDate = '-';
+                if (rawDateVal) {
+                    const d = new Date(rawDateVal);
+                    formattedDate = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+                }
+                if (rawDateVal) {
+                    const dateCell = getWritableCell(worksheet.getRow(2), 7); // G2 ช่องวันที่รับของ (Merge-safe)
+                    dateCell.value = formattedDate;
+                    dateCell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    dateCell.font = { name: 'Angsana New', size: 14, bold: true };
+                }
+
+                const receiverName = document.getElementById('receiverNameInput').value.trim();
+                if (receiverName) {
+                    const nameCell = getWritableCell(worksheet.getRow(2), 9); // I2 ช่อง Received BY (Merge-safe)
+                    nameCell.value = receiverName;
+                    nameCell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    nameCell.font = { name: 'Angsana New', size: 14, bold: true };
+                }
+
+                worksheet.getColumn(3).width = 31.5; // ขยายความกว้างคอลัมน์ Photo เผื่อขนาดที่เพิ่มขึ้น 18%
+
+                for (let idx = 0; idx < poData.length; idx++) {
+                    const item = poData[idx];
+                    
+                    const rowIdx = (rawWorkbookArrayBuffer && item.excelRowIndex) ? item.excelRowIndex : (5 + idx);
+                    const row = worksheet.getRow(rowIdx);
+
+                    const cellNo = getWritableCell(row, 2); // B (Merge-safe)
+                    cellNo.value = item.seq;
+                    cellNo.alignment = { horizontal: 'center', vertical: 'middle' };
+                    cellNo.font = { name: 'Angsana New', size: 14 };
+
+                    const cellDesc = getWritableCell(row, 5); // E (Merge-safe)
+                    cellDesc.value = item.description;
+                    cellDesc.alignment = { horizontal: 'left', vertical: 'middle' };
+                    cellDesc.font = { name: 'Angsana New', size: 14 };
+
+                    if (!rawWorkbookArrayBuffer || !item.excelRowIndex || item.manualAdded) {
+                        const cellPOQty = getWritableCell(row, 6); // F จำนวนส่ง (Merge-safe)
+                        cellPOQty.value = item.poQty;
+                        cellPOQty.alignment = { horizontal: 'center', vertical: 'middle' };
+                        cellPOQty.font = { name: 'Angsana New', size: 14 };
+
+                        const cellPrice = getWritableCell(row, 9); // I ราคา/หน่วย (Merge-safe)
+                        cellPrice.value = item.unitPrice;
+                        cellPrice.numFmt = '#,##0.00';
+                        cellPrice.alignment = { horizontal: 'right', vertical: 'middle' };
+                        cellPrice.font = { name: 'Angsana New', size: 14 };
+
+                        const cellAmount = getWritableCell(row, 10); // J จำนวนเงิน (Merge-safe)
+                        cellAmount.value = Number(item.poQty) * Number(item.unitPrice);
+                        cellAmount.numFmt = '#,##0.00';
+                        cellAmount.alignment = { horizontal: 'right', vertical: 'middle' };
+                        cellAmount.font = { name: 'Angsana New', size: 14 };
+                    }
+
+                    // โหมด Manual: ใส่กรอบและความสูงแถวให้เหมือนเทมเพลต PO
+                    if (!rawWorkbookArrayBuffer) {
+                        for (let c = 2; c <= 13; c++) {
+                            row.getCell(c).border = {
+                                top: { style: 'thin' }, left: { style: 'thin' },
+                                bottom: { style: 'thin' }, right: { style: 'thin' }
+                            };
+                        }
+                        if (!item.image) {
+                            row.height = 20;
+                        }
+                    }
+
+                    const cellReceived = getWritableCell(row, 8); // H รับของ (Merge-safe)
+                    cellReceived.value = Number(item.receivedQty);
+                    cellReceived.alignment = { horizontal: 'center', vertical: 'middle' };
+                    cellReceived.font = { name: 'Angsana New', size: 14 };
+
+                    const cellDamaged = getWritableCell(row, 11); // K Damage/Defect (Merge-safe)
+                    cellDamaged.value = Number(item.damagedQty);
+                    cellDamaged.alignment = { horizontal: 'center', vertical: 'middle' };
+                    
+                    if (item.damagedQty > 0) {
+                        cellDamaged.font = { name: 'Angsana New', size: 14, color: { argb: 'FFFF0000' }, bold: true };
+                    } else {
+                        cellDamaged.font = { name: 'Angsana New', size: 14, color: { argb: 'FF000000' }, bold: false };
+                    }
+
+                    // ของไม่ครบ (L) = จำนวนส่ง - รับของ - ชำรุด (เก็บเป็นค่าติดลบให้ตรงรูปแบบ (5.00) ของเทมเพลต)
+                    const cellIncomplete = getWritableCell(row, 12); // L ของไม่ครบ (Merge-safe)
+                    const remaining = Math.max(0, (Number(item.poQty) || 0) - (Number(item.receivedQty) || 0) - (Number(item.damagedQty) || 0));
+                    cellIncomplete.value = -remaining;
+
+                    const cellRemark = getWritableCell(row, 13); // M หมายเหตุ (Merge-safe)
+                    cellRemark.value = item.remark || '';
+                    cellRemark.alignment = { horizontal: 'left', vertical: 'middle' };
+                    cellRemark.font = { name: 'Angsana New', size: 14 };
+
+                    if (item.image && item.image.startsWith('data:image')) {
+                        const maxBoxWidth = 214.76;   // ขยายขึ้น 18% (จาก 182)
+                        const maxBoxHeight = 165.2;   // ขยายขึ้น 18% (จาก 140)
+                        worksheet.getRow(rowIdx).height = 128; // ปรับความสูงแถวรับขนาดรูปที่ใหญ่ขึ้น
+
+                        const imgExt = item.image.includes('jpeg') || item.image.includes('jpg') ? 'jpeg' : 'png';
+                        const imageId = workbook.addImage({ base64: item.image, extension: imgExt });
+
+                        const dims = await getImageDimensions(item.image);
+                        let targetWidth = maxBoxWidth;
+                        let targetHeight = maxBoxHeight;
+
+                        if (dims.width && dims.height) {
+                            const ratio = Math.min(maxBoxWidth / dims.width, maxBoxHeight / dims.height);
+                            targetWidth = dims.width * ratio;
+                            targetHeight = dims.height * ratio;
+                        }
+
+                        // จัดรูปกึ่งกลางช่อง Photo: คอลัมน์ C กว้าง 31.5 ตัวอักษร (~225.5px), แถวสูง 128pt (~170.7px)
+                        // ส่ง offset เป็น EMU ตรง ๆ (nativeColOff) เพราะ ExcelJS แปลงเศษของ tl.col/tl.row
+                        // ด้วยหน่วยคงที่ 640000/180000 EMU ซึ่งไม่เกี่ยวกับความกว้าง/สูงจริงของช่อง
+                        const photoColPx = 31.5 * 7 + 5;
+                        const photoRowPx = 128 * 4 / 3;
+                        const photoColOffEmu = Math.round(Math.max(0, (photoColPx - targetWidth) / 2) * 9525);
+                        const photoRowOffEmu = Math.round(Math.max(0, (photoRowPx - targetHeight) / 2) * 9525);
+
+                        worksheet.addImage(imageId, {
+                            tl: {
+                                nativeCol: 2,
+                                nativeColOff: photoColOffEmu,
+                                nativeRow: rowIdx - 1,
+                                nativeRowOff: photoRowOffEmu
+                            },
+                            ext: { width: targetWidth, height: targetHeight },
+                            editAs: 'oneCell'
+                        });
+                    }
+                }
+
+                const damagedItems = poData.filter(item => item.damagedQty > 0);
+                if (damagedItems.length > 0) {
+                    const damageSheet = workbook.addWorksheet('Damaged_Items');
+
+                    // แถว 1: ซัพพลายเออร์ + เลขที่ใบสั่งซื้อ (ดึงจากหัวไฟล์ PO / Sheet1)
+                    const thinBorder = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                    const borderAll = (row) => { for (let c = 1; c <= 7; c++) row.getCell(c).border = thinBorder; };
+
+                    // แถว 1: D1 = เลขที่ PO, E1 = label วันที่รับของ, F1 = วันที่ลิงก์จากชีตหลัก (G2)
+                    const mainSheetName = String(worksheet.name || 'Sheet1').replace(/'/g, "''");
+                    const infoRow = damageSheet.addRow(['Supplier', supplierName || '', 'PO', poNumber || '', 'วันที่รับของ', { formula: `'${mainSheetName}'!G2` }, '']);
+                    infoRow.getCell(1).font = { bold: true };
+                    infoRow.getCell(3).font = { bold: true };
+                    infoRow.getCell(5).font = { bold: true };
+                    borderAll(infoRow);
+
+                    const headerRow = damageSheet.addRow(['No.', 'Damaged Photo', 'Description', 'PO Qty', 'Damaged Qty', 'Unit Price', 'Total Damaged Amount']);
+                    headerRow.height = 26;
+                    for (let c = 1; c <= 7; c++) {
+                        const cell = headerRow.getCell(c);
+                        cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF78350F' } };
+                        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    }
+                    borderAll(headerRow);
+
+                    damageSheet.getColumn(1).width = 8;
+                    damageSheet.getColumn(2).width = 32; // ขยายความกว้างช่องรูป Sheet สรุปสินค้าชำรุด
+                    damageSheet.getColumn(3).width = 35; 
+                    damageSheet.getColumn(4).width = 12; 
+                    damageSheet.getColumn(5).width = 14; 
+                    damageSheet.getColumn(6).width = 14; 
+                    damageSheet.getColumn(7).width = 22; 
+
+                    let totalDamagedCost = 0;
+                    let totalDamagedQty = 0;
+
+                    for (let index = 0; index < damagedItems.length; index++) {
+                        const item = damagedItems[index];
+                        const rowNum = index + 3; // รายการเริ่มแถว 3 (แถว 1 = Supplier/PO, แถว 2 = header)
+                        const totalAmount = item.damagedQty * item.unitPrice;
+                        totalDamagedCost += totalAmount;
+                        totalDamagedQty += Number(item.damagedQty) || 0;
+
+                        const addedRow = damageSheet.addRow([
+                            item.seq,
+                            '', 
+                            item.description, 
+                            item.poQty,
+                            item.damagedQty,
+                            item.unitPrice,
+                            totalAmount
+                        ]);
+
+                        addedRow.alignment = { vertical: 'middle' };
+                        addedRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+                        addedRow.getCell(3).alignment = { horizontal: 'left', vertical: 'middle' };
+                        addedRow.getCell(4).alignment = { horizontal: 'center', vertical: 'middle' };
+                        addedRow.getCell(5).alignment = { horizontal: 'center', vertical: 'middle' };
+                        addedRow.getCell(6).numFmt = '#,##0.00';
+                        addedRow.getCell(7).numFmt = '#,##0.00';
+                        borderAll(addedRow);
+
+                        const imgData = item.damagedImage || item.image;
+                        if (imgData && imgData.startsWith('data:image')) {
+                            damageSheet.getRow(rowNum).height = 130; // 130pt (~173.3px) พอดีกับรูปสูงสุด 165.2px ไม่ให้ล้นแถว
+                            const imgExt = imgData.includes('jpeg') || imgData.includes('jpg') ? 'jpeg' : 'png';
+                            const imageId = workbook.addImage({ base64: imgData, extension: imgExt });
+
+                            const dims = await getImageDimensions(imgData);
+                            let targetWidth = 214.76;  // ขยายขึ้น 18% (จาก 160)
+                            let targetHeight = 165.2; // ขยายขึ้น 18% (จาก 110)
+                            if (dims.width && dims.height) {
+                                const ratio = Math.min(214.76 / dims.width, 165.2 / dims.height);
+                                targetWidth = dims.width * ratio;
+                                targetHeight = dims.height * ratio;
+                            }
+
+                            // จัดรูปกึ่งกลางช่อง Damaged Photo (คอลัมน์ B กว้าง 32 ตัวอักษร ~229px, แถว 130pt ~173.3px)
+                            const dmgColPx = 32 * 7 + 5;
+                            const dmgRowPx = 130 * 4 / 3;
+                            damageSheet.addImage(imageId, {
+                                tl: {
+                                    nativeCol: 1,
+                                    nativeColOff: Math.round(Math.max(0, (dmgColPx - targetWidth) / 2) * 9525),
+                                    nativeRow: rowNum - 1,
+                                    nativeRowOff: Math.round(Math.max(0, (dmgRowPx - targetHeight) / 2) * 9525)
+                                },
+                                ext: { width: targetWidth, height: targetHeight },
+                                editAs: 'oneCell'
+                            });
+                        }
+                    }
+
+                    const summaryRow = damageSheet.addRow(['', '', 'Total Damaged Summary', '', totalDamagedQty, '', totalDamagedCost]);
+                    summaryRow.font = { bold: true };
+                    summaryRow.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
+                    summaryRow.getCell(5).alignment = { horizontal: 'center', vertical: 'middle' };
+                    summaryRow.getCell(7).alignment = { horizontal: 'right', vertical: 'middle' };
+                    summaryRow.getCell(7).numFmt = '#,##0.00';
+                    borderAll(summaryRow);
+                }
+
+                if (billImagesArray.length > 0) {
+                    const billSheet = workbook.addWorksheet('Bill_Attachment');
+                    billSheet.pageSetup.paperSize = 9; 
+                    billSheet.pageSetup.orientation = 'portrait';
+
+                    let currentRow = 0;
+                    for (const imgObj of billImagesArray) {
+                        if (imgObj.src && imgObj.src.startsWith('data:image')) {
+                            const billExt = imgObj.src.includes('jpeg') || imgObj.src.includes('jpg') ? 'jpeg' : 'png';
+                            const billImageId = workbook.addImage({ base64: imgObj.src, extension: billExt });
+
+                            // ย่อรูปใบส่งของให้พอดีหน้ากระดาษตอนพิมพ์ (ไม่ให้รูปใหญ่เกินหน้า)
+                            const billRatio = Math.min(1, 620 / imgObj.width, 880 / imgObj.height);
+                            const billW = Math.round(imgObj.width * billRatio);
+                            const billH = Math.round(imgObj.height * billRatio);
+
+                            billSheet.addImage(billImageId, {
+                                tl: { col: 0, row: currentRow },
+                                ext: { width: billW, height: billH },
+                                editAs: 'oneCell'
+                            });
+
+                            const rowsNeeded = Math.ceil(billH / 20) + 3;
+                            currentRow += rowsNeeded;
+                        }
+                    }
+                }
+
+                const rawBuffer = await workbook.xlsx.writeBuffer();
+
+                // ลบ attribute editAs ที่ผิดสเปกก่อนเซฟ (ตำแหน่ง/ขนาดรูปไม่เปลี่ยน — ดู stripInvalidAnchorEditAs)
+                const buffer = await stripInvalidAnchorEditAs(rawBuffer);
+
+                // โหมดบันทึกอัตโนมัติ: เขียนทับไฟล์ปลายทางที่ผูกไว้ แล้วจบ ไม่ดาวน์โหลด/ไม่เด้ง LINE
+                if (silentTarget) {
+                    const writable = await silentTarget.createWritable();
+                    await writable.write(buffer);   // รับได้ทั้ง Blob และ ArrayBuffer
+                    await writable.close();
+                    return buffer;
+                }
+
+                // buffer อาจเป็น Blob (ซ่อมด้วย JSZip แล้ว) หรือ ArrayBuffer (โหลด JSZip ไม่ได้) จึงเช็คก่อนใช้
+                const excelBlob = (typeof Blob !== 'undefined' && buffer instanceof Blob) ? buffer : new Blob([buffer]);
+                saveAs(excelBlob, REPORT_FILENAME);
+
+                const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+                const excelFile = new File([excelBlob], REPORT_FILENAME, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                if (openLineAfter && isMobileDevice && navigator.canShare && navigator.canShare({ files: [excelFile] })) {
+                    showLineShareSheet(excelFile);
+                    return;
+                }
+
+                if (openLineAfter) {
+                    openLineShare();
+                } else if (confirm('✅ ดาวน์โหลดไฟล์ Excel เรียบร้อยแล้ว\n\nต้องการส่งข้อความสรุปทาง LINE ด้วยหรือไม่?')) {
+                    openLineShare();
+                }
+
+            } catch (error) {
+                console.error(error);
+                if (silentTarget) {
+                    // เขียนทับไม่สำเร็จ มักเกิดจากไฟล์ถูกเปิดค้างอยู่ใน Excel
+                    updateExcelAutoUI('เขียนไฟล์ไม่สำเร็จ — ถ้าไฟล์เปิดอยู่ใน Excel ให้ปิดก่อน', true);
+                    return;
+                }
+                alert('Export error: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
